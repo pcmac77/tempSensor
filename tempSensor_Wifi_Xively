@@ -1,0 +1,255 @@
+/*
+  WiFi Web Server
+ 
+ A simple web server that shows the value of the analog input pins.
+ using a WiFi shield.
+ 
+ This example is written for a network using WPA encryption. For 
+ WEP or WPA, change the Wifi.begin() call accordingly.
+ 
+ Circuit:
+ * WiFi shield attached
+ * Analog inputs attached to pins A0 through A5 (optional)
+ 
+ created 13 July 2010
+ by dlf (Metodo2 srl)
+ modified 31 May 2012
+ by Tom Igoe
+ 
+ */
+
+#include <SPI.h>
+#include <WiFi.h>
+#include <HttpClient.h>
+#include <Xively.h>
+#include <Wire.h> 
+#include <LiquidCrystal_I2C.h>
+#include <DHT.h>
+
+// for WEP
+//char ssid[] = "A10TW1";     //  your network SSID (name)
+//char key[] = "1357924680";    // your network key
+//int keyIndex = 0;  
+
+// for WPA
+//char ssid[] = "A10TW-ENG";      // your network SSID (name) 
+//char pass[] = "a10networks:100%";   // your network password
+// for home
+char ssid[] = "BONCO";
+char pass[] = "0285093138";
+
+//int keyIndex = 0;                 // your network key Index number (needed only for WEP)
+int temperaturePin =   0;
+int status = WL_IDLE_STATUS;
+
+// Your Xively key to let you upload data
+char xivelyKey[] = "vgNse8lYa0qGksxJDtfcgF70e19wjIIAg6JUzZxo9QfZWFOP";
+//your xively feed ID
+#define xivelyFeed 701307927
+//datastreams
+char sensorID[] = "TEMP_SENSOR_CHANNEL";
+char lightSenID[] = "Light";
+// Analog pin which we're monitoring (0 and 1 are used by the Ethernet shield)
+#define sensorPin A1
+#define photoPin A2
+#define DHTPIN 2
+
+#define DHTTYPE DHT11
+LiquidCrystal_I2C lcd(0x27,16,2);  // set the LCD address to 0x27 for a 16 chars and 2 line display
+
+// Define the strings for our datastream IDs
+XivelyDatastream datastreams[] = {
+  XivelyDatastream(sensorID, strlen(sensorID), DATASTREAM_FLOAT),
+  XivelyDatastream(lightSenID, strlen(lightSenID), DATASTREAM_INT)
+};
+
+// Finally, wrap the datastreams into a feed
+XivelyFeed feed(xivelyFeed, datastreams, 2 /* number of datastreams */);
+WiFiClient client;
+XivelyClient xivelyclient(client);
+//WiFiServer server(80);
+int cnt = 0;
+DHT dht(DHTPIN, DHTTYPE);
+void setup() {
+  //Initialize serial and wait for port to open:
+  Serial.begin(9600); 
+  while (!Serial) {
+    ; // wait for serial port to connect. Needed for Leonardo only
+  }
+
+  // check for the presence of the shield:
+  if (WiFi.status() == WL_NO_SHIELD) {
+    Serial.println("WiFi shield not present"); 
+    // don't continue:
+    while(true);
+  } 
+
+  lcd.init();                      // initialize the lcd 
+  dht.begin();
+
+
+  // attempt to connect to Wifi network:
+  while ( status != WL_CONNECTED) { 
+    Serial.print("Attempting to connect to SSID: ");
+    Serial.println(ssid);
+    // Connect to WPA/WPA2 network. Change this line if using open or WEP network:    
+    status = WiFi.begin(ssid, pass);
+    // Using WEP
+    //status = WiFi.begin(ssid, keyIndex, key);
+    // wait 10 seconds for connection:
+    //delay(10000);
+  } 
+  //server.begin();
+  // you're connected now, so print out the status:
+  printWifiStatus();
+}
+
+float myTemp;
+int ret;
+void loop() {
+  if ( status != WL_CONNECTED || ret == -1) {
+    setup();
+  } 
+  myTemp = getTemperature();
+  float myHumid2 = dht.readHumidity();
+  float myTemp2 = dht.readTemperature();
+
+  // listen for incoming clients
+
+  //WiFiClient client = server.available();
+
+//  if (client) {
+//    Serial.println("new client");
+//    // an http request ends with a blank line
+//    boolean currentLineIsBlank = true;
+//    while (client.connected()) {
+//      if (client.available()) {
+//        Serial.println("client is available");
+//        char c = client.read();
+//        Serial.write(c);
+//        // if you've gotten to the end of the line (received a newl  ine
+//        // character) and the line is blank, the http request has ended,
+//        // so you can send a reply
+//        if (c == '\n' && currentLineIsBlank) {
+//          // send a standard http response header
+//          client.println("HTTP/1.1 200 OK");
+//          client.println("Content-Type: text/html");
+//          client.println("Connection: close");  // the connection will be closed after completion of the response
+//          client.println("Refresh: 5");  // refresh the page automatically every 5 sec
+//          client.println();
+//          client.println("<!DOCTYPE HTML>");
+//          client.println("<html>");
+//          // output the value of each analog input pin
+//          for (int analogChannel = 0; analogChannel < 6; analogChannel++) {
+//            int sensorReading = analogRead(analogChannel);
+//            client.print("analog input ");
+//            client.print(analogChannel);
+//            client.print(" is ");
+//            client.print(sensorReading);
+//            client.println("<br />");       
+//          }
+//          client.print("temperature is: ");
+//          client.print(myTemp);
+//          client.print(" C");
+//          client.println("</html>");
+//          break;
+//        }
+//        if (c == '\n') {
+//          // you're starting a new line
+//          currentLineIsBlank = true;
+//        } 
+//        else if (c != '\r') {
+//          // you've gotten a character on the current line
+//          currentLineIsBlank = false;
+//        }
+//      }
+//    }
+//    // give the web browser time to receive the data
+//    delay(1);
+//
+//    // close the connection:
+//    client.stop();
+//    Serial.println("client disonnected");
+//  }
+  int lightValue = getLightReading();
+  if (lightValue < 120) {
+    digitalWrite(7, 1);
+  }
+  else {
+    digitalWrite(7, 0);
+  }
+  datastreams[0].setFloat(myTemp);
+  datastreams[1].setInt(lightValue);
+  
+  if (cnt % 36 == 0) { // 5 sec * 36 = 180 sec
+    ret = xivelyclient.put(feed, xivelyKey);
+  }
+  printToLcd(myTemp, ret, lightValue);
+
+  //return message
+  Serial.print("xivelyclient.put returned ");
+  if (ret != 200) {
+    Serial.println("Failed to put to xively!");
+  }
+  Serial.println(ret);
+  Serial.println("");
+  
+  Serial.print("myHumid2: ");
+  Serial.print(myHumid2);
+  Serial.print(", myTemp2: ");
+  Serial.println(myTemp2);
+  
+  //delay between calls
+  delay(5000);
+  cnt++;
+// END OF loop()
+}
+
+
+void printWifiStatus() {
+  // print the SSID of the network you're attached to:
+  Serial.print("SSID: ");
+  Serial.println(WiFi.SSID());
+
+  // print your WiFi shield's IP address:
+  IPAddress ip = WiFi.localIP();
+  Serial.print("IP Address: ");
+  Serial.println(ip);
+
+  // print the received signal strength:
+  long rssi = WiFi.RSSI();
+  Serial.print("signal strength (RSSI):");
+  Serial.print(rssi);
+  Serial.println(" dBm");
+}
+float getVoltage(int pin){
+  return (analogRead(pin) * .004882814); //converting from a 0 to 1023 digital range
+  // to 0 to 5 volts (each 1 reading equals ~ 5 millivolts
+}
+
+float getTemperature() {
+  float voltage = getVoltage(temperaturePin);
+  //getting the voltage reading from the temperature sensor
+  float temperature = (voltage - .5) * 100;
+  return temperature;
+}
+
+void printToLcd(float temperature, int code, float light) {
+  //lcd.backlight();
+  lcd.clear();
+  lcd.print("T: ");
+  lcd.print(temperature);
+  lcd.print(" C");
+  lcd.setCursor(0, 1);
+  lcd.print("C: ");
+  lcd.print(code);
+  lcd.print(" L: ");
+  lcd.print(light);
+  
+}
+
+int getLightReading() {
+  //float voltage = analogRead(photoPin) * .004882814;
+  //return voltage;
+  return map(analogRead(1), 0, 1023, 0, 255);
+}
